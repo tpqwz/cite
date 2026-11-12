@@ -235,6 +235,21 @@ proc isKeyword*(name: string): bool =
 proc certForCall*(name: string): seq[CertCite] =
   certCalls.getOrDefault(name)
 
+const err33Names = [
+  "malloc", "calloc", "realloc", "aligned_alloc",
+  "fopen", "freopen", "fclose", "fflush", "fread", "fwrite",
+  "fseek", "ftell", "fgetpos", "fsetpos", "remove", "rename",
+  "tmpfile", "setvbuf",
+]
+var err33 = initHashSet[string]()
+for name in err33Names:
+  err33.incl(name)
+
+proc ignoresResult*(name: string): bool =
+  ## ERR33-C, the part a parse can see: the return value is not used.
+  ## An assigned result that is never tested still needs values.
+  name in err33
+
 proc reservedName*(name: string): bool =
   ## Always reserved: underscore then uppercase, or two leading underscores.
   ## File-scope names with one leading underscore are also reserved. cite

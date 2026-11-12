@@ -70,6 +70,9 @@ void show(void) {
     atoi("1");
     rand();
     gets(buf);
+    FILE *kept = fopen("a", "r");
+    fopen("b", "r");
+    malloc(4);
 }
 #define _FOO 1
 int _Bar(void) { return 1; }
@@ -78,9 +81,15 @@ int _Bar(void) { return 1; }
   var rules = initHashSet[string]()
   for item in ran.findings:
     rules.incl(item.rule)
-  for rule in ["17.1", "20.4", "21.6", "21.8", "15.5", "ENV33-C", "ERR34-C", "MSC24-C", "MSC30-C", "DCL37-C"]:
+  for rule in ["17.1", "20.4", "21.6", "21.8", "15.5", "ENV33-C", "ERR34-C", "MSC24-C", "MSC30-C", "DCL37-C", "ERR33-C"]:
     if rule notin rules:
       quit("self-test missed " & rule, 1)
+  var ignored = 0
+  for item in ran.findings:
+    if item.rule == "ERR33-C":
+      inc ignored
+  if ignored != 2:
+    quit("self-test expected 2 ignored returns, got " & $ignored, 1)
   var called = false
   for fn in ran.funcs:
     if fn.path == "sample.c" and fn.name == "twice" and "twice" in fn.calls:
@@ -102,7 +111,7 @@ proc main() =
     elif arg == "--matrix":
       echo "checked"
       echo "  MISRA 7.3 15.1 15.5 17.1 17.2 20.1 20.4 21.3 21.4 21.5 21.6 21.7 21.8 21.9 21.10 21.12"
-      echo "  CERT DCL16-C DCL37-C ENV33-C ERR34-C MSC24-C MSC30-C"
+      echo "  CERT DCL16-C DCL37-C ENV33-C ERR33-C ERR34-C MSC24-C MSC30-C"
       echo "not decided"
       for row in undecided():
         echo "  CERT ", row[0], "  ", row[1]

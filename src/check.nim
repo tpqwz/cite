@@ -66,6 +66,35 @@ proc defineName(text: string): string =
     inc i
   if i == 0: "" else: rest[0 ..< i]
 
+proc resultIgnored(tokens: seq[Tok], calleeAt, openParen: int): bool =
+  ## True when a call is a statement by itself, or cast to void.
+  ## An assignment or a return uses the value. A surrounding expression does too.
+  let close = matchDelim(tokens, openParen, "(", ")")
+  if close < 0:
+    return false
+  var nxt = close + 1
+  while nxt < tokens.len and tokens[nxt].kind == tkPp:
+    inc nxt
+  if nxt >= tokens.len or tokens[nxt].text != ";":
+    return false
+  var depth = 0
+  var k = calleeAt - 1
+  while k >= 0:
+    let text = tokens[k].text
+    if text == ")":
+      inc depth
+    elif text == "(":
+      if depth == 0:
+        break
+      dec depth
+    elif depth == 0:
+      if text == "=" or text == "return":
+        return false
+      if text == ";" or text == "{" or text == "}":
+        return true
+    dec k
+  true
+
 proc badSuffix(text: string): bool =
   var i = 0
   while i < text.len and text[i] in {'0' .. '9', 'a' .. 'f', 'A' .. 'F', '.', 'x', 'X', '+', '-'}:
@@ -140,6 +169,8 @@ proc check*(path, src: string): tuple[findings: seq[Finding], funcs: seq[FuncBod
               findings.add(path, tokens[j - 1].line, hit.get.id, label, true)
             for cert in certForCall(callee):
               findings.add(path, tokens[j - 1].line, cert.id, cert.detail & " '" & callee & "'", true)
+            if ignoresResult(callee) and resultIgnored(tokens, j - 1, j):
+              findings.add(path, tokens[j - 1].line, "ERR33-C", "ignored return '" & callee & "'", true)
             if callee notin seen:
               seen.incl(callee)
               calls.add(callee)
