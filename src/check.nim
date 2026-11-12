@@ -66,6 +66,109 @@ proc defineName(text: string): string =
     inc i
   if i == 0: "" else: rest[0 ..< i]
 
+proc sig(tokens: seq[Tok], i, hi: int): int =
+  var k = i
+  while k < hi and tokens[k].kind == tkPp:
+    inc k
+  k
+
+proc prevSig(tokens: seq[Tok], i: int): int =
+  var k = i
+  while k >= 0 and tokens[k].kind == tkPp:
+    dec k
+  k
+
+proc matchBraceBack(tokens: seq[Tok], closeAt: int): int =
+  var depth = 0
+  for i in countdown(closeAt, 0):
+    if tokens[i].text == "}":
+      inc depth
+    elif tokens[i].text == "{":
+      dec depth
+      if depth == 0:
+        return i
+  -1
+
+proc isDoWhile(tokens: seq[Tok], whileAt: int): bool =
+  let before = prevSig(tokens, whileAt - 1)
+  if before < 0 or tokens[before].text != "}":
+    return false
+  let opener = matchBraceBack(tokens, before)
+  if opener < 0:
+    return false
+  let earlier = prevSig(tokens, opener - 1)
+  earlier >= 0 and tokens[earlier].text == "do"
+
+proc citeBraceBody(findings: var seq[Finding], path: string, tokens: seq[Tok], lo, hi: int) =
+  ## MISRA C:2012 15.6. An else-if is accepted; the inner if is checked on its own.
+  var i = lo
+  while i < hi:
+    let word = tokens[i].text
+    if word == "if" or word == "for" or word == "while":
+      if word == "while" and isDoWhile(tokens, i):
+        inc i
+        continue
+      let paren = sig(tokens, i + 1, hi)
+      if paren < hi and tokens[paren].text == "(":
+        let close = matchDelim(tokens, paren, "(", ")")
+        if close >= 0:
+          let body = sig(tokens, close + 1, hi)
+          if body < hi and tokens[body].text != "{":
+            findings.add(path, tokens[i].line, "15.6", word & " body is not a compound statement", true)
+    elif word == "else" or word == "do":
+      let body = sig(tokens, i + 1, hi)
+      if body < hi and tokens[body].text != "{" and not (word == "else" and tokens[body].text == "if"):
+        findings.add(path, tokens[i].line, "15.6", word & " body is not a compound statement", true)
+    inc i
+
+const declWords = ["void", "char", "short", "int", "long", "float", "double", "signed",
+                   "unsigned", "struct", "enum", "union", "const", "static", "volatile",
+                   "_Bool", "bool", "size_t", "FILE"]
+
+proc citeSwitchDecl(findings: var seq[Finding], path: string, tokens: seq[Tok], lo, hi: int) =
+  ## DCL41-C. A declaration in a switch body before the first case label.
+  var i = lo
+  while i < hi:
+    if tokens[i].text == "switch":
+      let paren = sig(tokens, i + 1, hi)
+      if paren < hi and tokens[paren].text == "(":
+        let close = matchDelim(tokens, paren, "(", ")")
+        if close >= 0:
+          let brace = sig(tokens, close + 1, hi)
+          if brace < hi and tokens[brace].text == "{":
+            let finish = matchDelim(tokens, brace, "{", "}")
+            if finish >= 0:
+              var depth = 0
+              var j = brace + 1
+              while j < finish:
+                if tokens[j].text == "{":
+                  inc depth
+                elif tokens[j].text == "}":
+                  dec depth
+                elif depth == 0 and (tokens[j].text == "case" or tokens[j].text == "default"):
+                  break
+                elif depth == 0 and tokens[j].text in declWords:
+                  findings.add(path, tokens[j].line, "DCL41-C", "declaration before the first case", true)
+                  break
+                inc j
+              i = finish
+    inc i
+
+proc returnsValue(tokens: seq[Tok], nameAt: int): bool =
+  ## False when the declarator is a void function, not void*.
+  var star = false
+  var k = nameAt - 1
+  while k >= 0:
+    let text = tokens[k].text
+    if text == "*":
+      star = true
+    elif text == "void":
+      return star
+    elif text == ";" or text == "{" or text == "}":
+      break
+    dec k
+  true
+
 proc resultIgnored(tokens: seq[Tok], calleeAt, openParen: int): bool =
   ## True when a call is a statement by itself, or cast to void.
   ## An assignment or a return uses the value. A surrounding expression does too.
@@ -177,6 +280,10 @@ proc check*(path, src: string): tuple[findings: seq[Finding], funcs: seq[FuncBod
           inc j
         if returns > 1:
           findings.add(path, tokens[i - 1].line, "15.5", name & " returns in " & $returns & " places", false)
+        if returns == 0 and returnsValue(tokens, i - 1):
+          findings.add(path, tokens[i - 1].line, "MSC37-C", name & " has no return", true)
+        citeBraceBody(findings, path, tokens, nxt + 1, finish)
+        citeSwitchDecl(findings, path, tokens, nxt + 1, finish)
         funcs.add FuncBody(path: path, name: name, calls: calls)
         i = finish + 1
         continue

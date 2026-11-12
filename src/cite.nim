@@ -76,14 +76,36 @@ void show(void) {
 }
 #define _FOO 1
 int _Bar(void) { return 1; }
+void bodies(int x) {
+  if (x) return;
+  if (x) { return; }
+  while (x) x = 0;
+  do { x = 0; } while (x);
+}
+int missing(void) { int y; }
+void declInSwitch(int x) {
+  switch (x) {
+    int z;
+    case 1: break;
+  }
+}
 """
   let ran = check("sample.c", src)
   var rules = initHashSet[string]()
   for item in ran.findings:
     rules.incl(item.rule)
-  for rule in ["17.1", "20.4", "21.6", "21.8", "15.5", "ENV33-C", "ERR34-C", "MSC24-C", "MSC30-C", "DCL37-C", "ERR33-C"]:
+  for rule in ["17.1", "20.4", "21.6", "21.8", "15.5", "15.6", "ENV33-C", "ERR34-C", "MSC24-C", "MSC30-C", "DCL37-C", "DCL41-C", "ERR33-C", "MSC37-C"]:
     if rule notin rules:
       quit("self-test missed " & rule, 1)
+  var braces = 0
+  var switches = 0
+  var noreturn = 0
+  for item in ran.findings:
+    if item.rule == "15.6": inc braces
+    elif item.rule == "DCL41-C": inc switches
+    elif item.rule == "MSC37-C": inc noreturn
+  if braces != 3 or switches != 1 or noreturn != 1:
+    quit("self-test counts 15.6=" & $braces & " DCL41=" & $switches & " MSC37=" & $noreturn, 1)
   var ignored = 0
   for item in ran.findings:
     if item.rule == "ERR33-C":
@@ -110,8 +132,8 @@ proc main() =
       return
     elif arg == "--matrix":
       echo "checked"
-      echo "  MISRA 7.3 15.1 15.5 17.1 17.2 20.1 20.4 21.3 21.4 21.5 21.6 21.7 21.8 21.9 21.10 21.12"
-      echo "  CERT DCL16-C DCL37-C ENV33-C ERR33-C ERR34-C MSC24-C MSC30-C"
+      echo "  MISRA 7.3 15.1 15.5 15.6 17.1 17.2 20.1 20.4 21.3 21.4 21.5 21.6 21.7 21.8 21.9 21.10 21.12"
+      echo "  CERT DCL16-C DCL37-C DCL41-C ENV33-C ERR33-C ERR34-C MSC24-C MSC30-C MSC37-C"
       echo "not decided"
       for row in undecided():
         echo "  CERT ", row[0], "  ", row[1]
