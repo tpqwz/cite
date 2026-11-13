@@ -1,11 +1,12 @@
 import std/strutils
 
-## C tokens with line numbers. Comments and string contents are not tokens.
-## A directive is one token, including a backslash-newline continuation.
+## C tokens with line numbers. Comments and character constants are not
+## tokens. A string literal is a token whose text is `"`. Its contents are
+## not kept. A directive is one token, including a backslash-newline continuation.
 
 type
   TokKind* = enum
-    tkIdent, tkNum, tkPunct, tkPp
+    tkIdent, tkNum, tkPunct, tkPp, tkStr
   Tok* = object
     kind*: TokKind
     text*: string
@@ -67,6 +68,7 @@ proc lex*(src: string): seq[Tok] =
     bol = false
     if c == '"' or c == '\'':
       let quote = c
+      let startLine = line
       inc i
       while i < n and src[i] != quote:
         if src[i] == '\n':
@@ -79,6 +81,8 @@ proc lex*(src: string): seq[Tok] =
         inc i
       if i < n:
         inc i
+      if quote == '"':
+        result.add Tok(kind: tkStr, text: "\"", line: startLine)
       continue
     if c in {'0' .. '9'} or (c == '.' and i + 1 < n and src[i + 1] in {'0' .. '9'}):
       let startLine = line

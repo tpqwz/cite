@@ -139,6 +139,8 @@ const
   ## Guidelines that need values, linkage, or a whole program. Listed so a
   ## clean run cannot be read as a proof.
   undecidedRows = [
+    ("7.4", "a later assignment and a typedef for char are not seen"),
+    ("13.5", "a call on the right of && or || is not seen"),
     ("ARR30-C", "pointer and index bounds"),
     ("ARR32-C", "variable-length array size"),
     ("ARR38-C", "library function argument bounds"),
@@ -162,13 +164,14 @@ const
     ("EXP34-C", "null dereference"),
     ("EXP35-C", "temporary lifetime"),
     ("EXP37-C", "argument count and type"),
-    ("FIO30-C", "excluding user data from format strings needs values"),
+    ("FIO30-C", "a literal format may be built from user data, and a call through a pointer is not seen"),
     ("FIO39-C", "flush between input and output"),
     ("FIO40-C", "reset a string after fgets fails"),
     ("FLP30-C", "floating loop counter needs types"),
     ("FLP32-C", "floating exceptions"),
     ("INT30-C", "unsigned wrap"),
     ("INT32-C", "signed overflow"),
+    ("INT33-C", "a divisor that is not a literal zero"),
     ("INT34-C", "shift width"),
     ("INT35-C", "integer precision"),
     ("INT36-C", "pointer converted to integer"),
@@ -180,12 +183,31 @@ const
     ("MSC32-C", "how a generator is seeded"),
     ("MSC33-C", "asctime argument range"),
     ("MSC38-C", "a predefined identifier that may be a macro"),
+    ("PRE31-C", "a macro defined in another file is not seen"),
     ("SIG30-C", "async-signal-safe calls inside a handler"),
     ("STR31-C", "storage for a string"),
     ("STR32-C", "wide and narrow strings"),
     ("STR34-C", "character converted to unsigned char"),
     ("STR38-C", "wide and narrow string functions"),
   ]
+  ## What --matrix prints as checked. Every rule-table id belongs here.
+  ## --self-test fails when one is missing or has no counted case.
+  checkedIds* = [
+    "2.6", "2.7", "4.10", "7.1", "7.3", "7.4", "8.2", "8.14",
+    "12.3",
+    "13.4", "13.5", "13.6",
+    "15.1", "15.2", "15.3", "15.4", "15.5", "15.6", "15.7",
+    "16.2", "16.3", "16.4", "16.5", "16.6", "17.1", "17.2", "17.8",
+    "18.7", "19.2",
+    "20.1", "20.2", "20.3", "20.4", "20.5", "20.7", "20.10", "20.11", "20.12", "20.13", "20.14",
+    "21.1", "21.3", "21.4", "21.5", "21.6", "21.7", "21.8", "21.9", "21.10",
+    "21.11", "21.12",
+    "DCL16-C", "DCL37-C", "DCL41-C", "ENV33-C", "ERR33-C", "ERR34-C",
+    "FIO30-C", "INT33-C",
+    "MSC17-C", "MSC24-C", "MSC30-C", "MSC37-C", "PRE06-C", "PRE11-C", "PRE31-C",
+  ]
+  ## Checked for a slice, still not decided for the rest of the guideline.
+  partialIds* = ["7.4", "13.5", "ERR33-C", "FIO30-C", "INT33-C", "PRE31-C"]
   keywordList = [
     "auto", "break", "case", "char", "const", "continue", "default", "do",
     "double", "else", "enum", "extern", "float", "for", "goto", "if", "inline",
@@ -259,3 +281,23 @@ proc reservedName*(name: string): bool =
 proc undecided*(): seq[(string, string)] =
   for row in undecidedRows:
     result.add (row[0], row[1])
+
+proc ruledIds*(): seq[string] =
+  ## Ids the tables can emit. The matrix has to name each one.
+  var seen = initHashSet[string]()
+  for row in callRows:
+    if row[1] notin seen:
+      seen.incl(row[1])
+      result.add(row[1])
+  for row in headerRows:
+    if row[1] notin seen:
+      seen.incl(row[1])
+      result.add(row[1])
+  for row in useRows:
+    if row[1] notin seen:
+      seen.incl(row[1])
+      result.add(row[1])
+  for row in certCallRows:
+    if row[1] notin seen:
+      seen.incl(row[1])
+      result.add(row[1])
