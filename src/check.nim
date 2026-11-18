@@ -455,7 +455,7 @@ proc clauseEnd(tokens: seq[Tok], lo, hi: int): ClauseEnd =
     return ceJump
   if word == "return" or word == "goto":
     return ceJump
-  if word in ["exit", "abort", "_Exit", "quick_exit"]:
+  if word in ["exit", "abort", "_Exit", "_exit", "quick_exit"]:
     let paren = sig(tokens, s + 1, b)
     if paren < b and tokens[paren].text == "(":
       let close = matchDelim(tokens, paren, "(", ")")
@@ -1734,6 +1734,205 @@ proc macroEndsSemi(body: string): bool =
     inc i
   last == ';'
 
+proc statementJumps(tokens: seq[Tok], lo, hi: int): bool =
+  let how = clauseEnd(tokens, lo, hi)
+  how == ceJump or how == ceBreak
+
+proc labelStart(tokens: seq[Tok], i, hi: int): bool =
+  if i >= hi:
+    return false
+  if tokens[i].text == "case" or tokens[i].text == "default":
+    return true
+  tokens[i].kind == tkIdent and i + 1 < hi and tokens[i + 1].text == ":"
+
+proc hasGotoLabel(tokens: seq[Tok], lo, hi: int): bool =
+  ## An identifier label a goto can enter. A case label is not one of those.
+  ## A colon in `a ? b : c` is not one either.
+  var k = lo
+  var paren = 0
+  while k < hi:
+    let text = tokens[k].text
+    if text == "(" or text == "[":
+      inc paren
+    elif text == ")" or text == "]":
+      if paren > 0: dec paren
+    elif paren == 0 and tokens[k].kind == tkIdent and k + 1 < hi and tokens[k + 1].text == ":":
+      let prev = prevSig(tokens, k - 1)
+      if prev < lo or tokens[prev].text in ["{", ";", "}"]:
+        return true
+    inc k
+  false
+
+proc citeReach(findings: var seq[Finding], path: string, tokens: seq[Tok], lo, hi: int)
+
+proc walkInner(findings: var seq[Finding], path: string, tokens: seq[Tok], lo, hi: int) =
+  var k = lo
+  var paren = 0
+  while k < hi:
+    let text = tokens[k].text
+    if text == "(" or text == "[":
+      inc paren
+    elif text == ")" or text == "]":
+      if paren > 0: dec paren
+    elif paren == 0 and text == "{":
+      let close = matchDelim(tokens, k, "{", "}")
+      if close < 0:
+        return
+      citeReach(findings, path, tokens, k + 1, close)
+      k = close + 1
+      continue
+    inc k
+
+proc conditionalDirective(text: string): bool =
+  directiveWord(text) in ["if", "ifdef", "ifndef", "elif", "else", "endif"]
+
+proc citeReach(findings: var seq[Finding], path: string, tokens: seq[Tok], lo, hi: int) =
+  ## MISRA C:2012 2.1. A statement after a jump in the same block, before a label.
+  ## A goto label is an entry. A conditional directive starts a branch this
+  ## walk cannot choose, so the dead flag clears. A value is not seen.
+  var k = lo
+  var dead = false
+  while k < hi:
+    while k < hi and tokens[k].kind == tkPp:
+      if conditionalDirective(tokens[k].text):
+        dead = false
+      inc k
+    if k >= hi:
+      break
+    if labelStart(tokens, k, hi):
+      dead = false
+      if tokens[k].text == "case" or tokens[k].text == "default":
+        k = afterLabel(tokens, k, hi)
+      else:
+        k += 2
+      continue
+    if tokens[k].text == "{":
+      let close = matchDelim(tokens, k, "{", "}")
+      if close < 0:
+        break
+      citeReach(findings, path, tokens, k + 1, close)
+      let entry = hasGotoLabel(tokens, k + 1, close)
+      if dead and not entry:
+        findings.add(path, tokens[k].line, "2.1", "unreachable code", true)
+        k = close + 1
+        continue
+      dead = statementJumps(tokens, k, close + 1)
+      k = close + 1
+      continue
+    if dead:
+      findings.add(path, tokens[k].line, "2.1", "unreachable code", true)
+      k = skipStmt(tokens, k, hi)
+      continue
+    let n = skipStmt(tokens, k, hi)
+    walkInner(findings, path, tokens, k, n)
+    dead = statementJumps(tokens, k, n)
+    k = n
+
+proc invariantSpan(tokens: seq[Tok], lo, hi: int): bool =
+  ## True when the span is a numeric literal, with parentheses and a sign.
+  var k = lo
+  var depth = 0
+  var saw = false
+  while k < hi:
+    k = sig(tokens, k, hi)
+    if k >= hi:
+      break
+    let text = tokens[k].text
+    if text == "(":
+      if saw:
+        return false
+      inc depth
+    elif text == ")":
+      if depth == 0:
+        return false
+      dec depth
+    elif not saw and (text == "+" or text == "-"):
+      discard
+    elif not saw and tokens[k].kind == tkNum:
+      saw = true
+    else:
+      return false
+    inc k
+  saw and depth == 0
+
+proc citeInvariant(findings: var seq[Finding], path: string, tokens: seq[Tok], lo, hi: int) =
+  ## MISRA C:2012 14.3. The controlling expression is a numeric literal.
+  ## An empty for-condition is not an expression. A value that folds to a
+  ## constant is not seen.
+  var i = lo
+  while i < hi:
+    let word = tokens[i].text
+    if word == "if" or word == "while" or word == "switch":
+      let paren = sig(tokens, i + 1, hi)
+      if paren < hi and tokens[paren].text == "(":
+        let close = matchDelim(tokens, paren, "(", ")")
+        if close > paren and invariantSpan(tokens, paren + 1, close):
+          findings.add(path, tokens[i].line, "14.3", "controlling expression is invariant", true)
+    elif word == "for":
+      let paren = sig(tokens, i + 1, hi)
+      if paren < hi and tokens[paren].text == "(":
+        let close = matchDelim(tokens, paren, "(", ")")
+        if close > paren:
+          var depth = 0
+          var semis: seq[int] = @[]
+          var k = paren + 1
+          while k < close:
+            if tokens[k].text == "(":
+              inc depth
+            elif tokens[k].text == ")":
+              if depth > 0: dec depth
+            elif depth == 0 and tokens[k].text == ";":
+              semis.add(k)
+            inc k
+          if semis.len >= 2 and invariantSpan(tokens, semis[0] + 1, semis[1]):
+            findings.add(path, tokens[i].line, "14.3", "controlling expression is invariant", true)
+    inc i
+
+proc forCounterFloat(tokens: seq[Tok], openAt, closeAt: int): bool =
+  ## The for-init writes float or double on the counter, and the counter is not a pointer.
+  var depth = 0
+  var semi = -1
+  var k = openAt + 1
+  while k < closeAt:
+    if tokens[k].text == "(":
+      inc depth
+    elif tokens[k].text == ")":
+      if depth > 0: dec depth
+    elif depth == 0 and tokens[k].text == ";":
+      semi = k
+      break
+    inc k
+  if semi < 0:
+    return false
+  var sawType = false
+  var sawStar = false
+  var beforeEq = true
+  k = openAt + 1
+  while k < semi:
+    let text = tokens[k].text
+    if text == "=":
+      beforeEq = false
+    elif beforeEq and (text == "float" or text == "double"):
+      sawType = true
+    elif beforeEq and text == "*":
+      sawStar = true
+    inc k
+  sawType and not sawStar
+
+proc citeFloatFor(findings: var seq[Finding], path: string, tokens: seq[Tok], lo, hi: int) =
+  ## MISRA C:2012 14.1 and CERT FLP30-C. The for-init says float or double.
+  ## A typedef, and a counter declared outside the for, are not seen.
+  var i = lo
+  while i < hi:
+    if tokens[i].text == "for":
+      let paren = sig(tokens, i + 1, hi)
+      if paren < hi and tokens[paren].text == "(":
+        let close = matchDelim(tokens, paren, "(", ")")
+        if close > paren and forCounterFloat(tokens, paren, close):
+          findings.add(path, tokens[i].line, "14.1", "loop counter has floating type", true)
+          findings.add(path, tokens[i].line, "FLP30-C", "floating loop counter", true)
+    inc i
+
 proc citeMacroSemi(findings: var seq[Finding], path: string, tokens: seq[Tok]) =
   ## CERT PRE11-C. A semicolon inside a string or a character constant is quiet.
   for tok in tokens:
@@ -1856,6 +2055,9 @@ proc check*(path, src: string): tuple[findings: seq[Finding], funcs: seq[FuncBod
         citeParamMod(findings, path, tokens, i, close, nxt + 1, finish)
         citeFlow(findings, path, tokens, nxt + 1, finish)
         citeLoops(findings, path, tokens, nxt + 1, finish)
+        citeReach(findings, path, tokens, nxt + 1, finish)
+        citeInvariant(findings, path, tokens, nxt + 1, finish)
+        citeFloatFor(findings, path, tokens, nxt + 1, finish)
         funcs.add FuncBody(path: path, name: name, calls: calls)
         i = finish + 1
         continue

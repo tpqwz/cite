@@ -19,7 +19,7 @@ Two outcomes exist for every guideline we claim to know:
 - **Checked.** The parse can see a violation. The row has a case in `--self-test`.
 - **Not decided.** The guideline needs values, linkage, or a whole program. It appears under `cite --matrix`. Leaving it off the matrix is how a clean run becomes a lie.
 
-Adding a row is the procedure under "How to add a row". `checkedIds` in `src/rules.nim` is the list `--matrix` prints. A partial check stays on both lists. `partialIds` names those rows. 7.4, 13.5, ERR33-C, FIO30-C, INT33-C, and PRE31-C stay in both.
+Adding a row is the procedure under "How to add a row". `checkedIds` in `src/rules.nim` is the list `--matrix` prints. A partial check stays on both lists. `partialIds` names those rows. 2.1, 7.4, 13.5, 14.1, 14.3, ERR33-C, FIO30-C, FLP30-C, INT33-C, and PRE31-C stay in both.
 
 Advisory MISRA rows (2.6, 2.7, 12.3, 13.4, 15.1, 15.4, 15.5, 17.8, 19.2, 20.5, 20.10) are checked and counted. They print only with `--advisory`. Required rows and CERT citations print by default. The process exits 1 when any default finding exists.
 
@@ -29,6 +29,7 @@ The meanings of the checked rows. The ids that count are `checkedIds`, printed b
 
 MISRA C:2012 numbers the parse can see:
 
+- 2.1 a statement after a jump in the same block, before a label. `return`, `goto`, `break`, `continue`, `exit`, `abort`, `_Exit`, `_exit`, and `quick_exit` are jumps, and so is an `if` / `else` whose every path is one. A goto label is an entry. A `#if` branch clears the trail, because the walk cannot choose a side. Code that is dead only because of a value stays not decided.
 - 2.6 an unused label. 2.7 a simple parameter whose name never occurs in the body. A nested declarator, a bare typedef, and a K&R name are not judged.
 - 4.10 and CERT PRE06-C a header with no include guard and no `#pragma once`. The guard has to be the first token and it has to cover the file. An empty header is quiet.
 - 7.1 an octal constant. A lone `0`, a hex constant, and a float are quiet.
@@ -37,6 +38,7 @@ MISRA C:2012 numbers the parse can see:
 - 8.2 an empty parameter list. A bare name is K&R only when declarations sit before the brace. `(void)`, a keyword type, and a typedef name plus a parameter are quiet. 8.14 the word `restrict`.
 - 12.3 the comma operator. An argument comma, an initializer comma, and `for (int i = 0, j = 0;;)` are quiet. `for (i = 0, j = 0;;)` and `(1, 2)` are the operator. A typedef name before the declarator counts as a for-init declaration.
 - 13.4 an assignment whose result is used. `a = b`, a declaration initializer, an enumerator, a for-init, and a for-increment are quiet. `==`, `!=`, `<=`, and `>=` are quiet. 13.5 the right operand of `&&` or `||` increments or assigns. A call on that side stays not decided. 13.6 a parenthesized `sizeof` operand that increments, assigns, or calls.
+- 14.1 a `for` whose init writes `float` or `double` on the counter. A pointer to one of those is quiet. A typedef, and a counter declared outside the `for`, stay not decided. The same `for` cites CERT FLP30-C. 14.3 the controlling expression of `if`, `while`, `switch`, or `for` is a numeric literal. `for (;;)` has no expression and is quiet. An expression that folds to a constant stays not decided.
 - 15.2 a `goto` whose label is missing or earlier in the function. 15.3 a `goto` whose label is in a block that does not enclose the `goto`. 15.4 a loop with more than one `break` or outward `goto`. A `break` inside a nested loop or a `switch` belongs to that statement.
 - 15.6 the body of `if`, `else`, `for`, `while`, or `do` is not a brace block. `else if` is accepted. The inner `if` is checked on its own. A `while` that closes a `do` is not treated as a loop body.
 - 15.7 an `if` / `else if` chain with no final `else`. A plain `if`, and an `if` with only an `else`, are quiet.
@@ -57,6 +59,7 @@ CERT C, same standard of evidence:
 - ERR33-C the return value of an allocation or a file call is thrown away. Assignment and `return` count as using the value. A value that is stored and never tested is not decided. `printf` and `scanf` are not in this row.
 - ERR34-C `atof`, `atoi`, `atol`, `atoll`.
 - FIO30-C a `printf` or `scanf` family call whose format argument is not a string literal. Adjacent literals, a wide prefix (`L`, `u`, `U`, `u8`), and parentheses count as one literal. A literal built from user data, and a call through a pointer, stay not decided.
+- FLP30-C the same `for` as 14.1.
 - INT33-C a `/` or `%` whose divisor is an integer literal zero. Any other divisor stays not decided.
 - MSC24-C the obsolescent calls listed in `certCallRows` in `src/rules.nim`, including `fopen`.
 - MSC30-C `rand`.
@@ -95,13 +98,13 @@ build/cite path/to/src
 build/cite --advisory path/to/src
 ```
 
-From the offside checkout, `make -C c cite` builds this tree and runs it on `c/src`. Offside gitignores this directory. This repo is the source of truth. It is https://github.com/tpqwz/cite. Push only when the author asks. A tag `v` plus `citeVersion` publishes a prerelease of the three executables. The tag has to match `cite --version`.
+From the offside checkout, `make -C c cite` builds this tree and runs it on `c/src`. Offside gitignores this directory. This repo is the source of truth. It is https://github.com/tpqwz/cite. Push only when the author asks. A tag `v` plus `citeVersion` publishes a prerelease. Linux and Windows are required. macOS is included when a runner accepts the job. The tag has to match `cite --version`.
 
 ## How to add a row
 
 1. Put the detection in `rules.nim` or `check.nim`.
 2. Add the id to `checkedIds`. Give it a count in the sample inside `selfTest`. The test fails when that count is wrong, when the id is missing, when a rule-table id is off `checkedIds`, or when a checked id is still in `undecidedRows`.
-3. Leave the id in `undecidedRows` only when the check is partial, and add it to `partialIds`. A full check comes off `undecidedRows`. 7.4, 13.5, ERR33-C, FIO30-C, INT33-C, and PRE31-C stay in both.
+3. Leave the id in `undecidedRows` only when the check is partial, and add it to `partialIds`. A full check comes off `undecidedRows`. 2.1, 7.4, 13.5, 14.1, 14.3, ERR33-C, FIO30-C, FLP30-C, INT33-C, and PRE31-C stay in both.
 4. Run `make test`, then `build/cite ../c/src`, and read the new citations before calling the row done.
 
 A row that fires on the offside sources is a result to report. A row that stays quiet there is done only when the self-test shows it can fire.
