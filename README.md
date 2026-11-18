@@ -29,8 +29,10 @@ Alpha versions are published as GitHub prereleases. Each file is the program. Th
 | File | Machine |
 | --- | --- |
 | `cite-linux-x64` | Linux x64 |
-| `cite-macos-arm64` | macOS Apple silicon |
 | `cite-windows-x64.exe` | Windows x64 |
+| `cite-macos-arm64` | macOS Apple silicon, when a runner accepts the job |
+
+GitHub has been unable to start the macOS build. A prerelease without that file was built from the Linux and Windows runs.
 
 On Linux and macOS, mark the file executable:
 
@@ -73,4 +75,4 @@ A few rows are in both places. The parse can see a slice of the guideline, and t
 
 The number is `citeVersion` in `src/cite.nim`. While cite is alpha, it has the form `0.1.0-alpha.N`.
 
-A push to `master` runs the self-test on Linux, macOS, and Windows. A tag `v0.1.0-alpha.N` does the same and, when the tag matches `cite --version`, publishes a prerelease with the three executables. A tag that does not say alpha, beta, or rc is published as a release. This project is not there yet.
+A push to `master` runs the self-test on Linux and Windows. A tag `v0.1.0-alpha.N` does the same and, when the tag matches `cite --version`, publishes a prerelease. macOS is built in that same tag run when a runner accepts the job, and its executable is added to the prerelease. A tag that does not say alpha, beta, or rc is published as a release. This project is not there yet.

@@ -1,4 +1,5 @@
 # Self-test on a push to master and on a pull request.
+# macOS is tried from release.yml. GitHub has not been offering an arm64 runner.
 # A version tag publishes the executables from release.yml.
 name: build
 
@@ -21,9 +22,6 @@ jobs:
         include:
           - name: linux-x64
             os: ubuntu-latest
-            out: cite
-          - name: macos-arm64
-            os: macos-latest
             out: cite
           - name: windows-x64
             os: windows-latest
